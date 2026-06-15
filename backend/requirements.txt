@@ -1,0 +1,9 @@
+# confluent-kafka
+confluent-kafka==2.13.0
+fastapi[standard]
+uvicorn[standard]
+dotenv
+oracledb
+sqlalchemy
+python-jose 
+python-multipart

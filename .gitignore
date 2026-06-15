@@ -1,0 +1,10 @@
+.env
+.venv
+__pycache__/
+
+secrets/
+db/Wallet_unidb/
+db/Wallet_unidb.zip
+db/screenshots/
+
+spark-data/
