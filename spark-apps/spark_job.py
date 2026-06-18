@@ -8,8 +8,14 @@ import fitz  # PyMuPDF
 import oracledb
 import json
 
-KAFKA_ADMIN_PASSWORD = os.getenv("KAFKA_ADMIN_PASSWORD")
+KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
+KAFKA_USER = os.getenv("KAFKA_USER")
 KAFKA_TRUSTSTORE_PASSWORD = os.getenv("KAFKA_TRUSTSTORE_PASSWORD")
+
+error_json = {
+    "summary": "ERROR_PROCESSING_CV",
+}
+json_error_str = json.dumps(error_json)
 
 def process_partition(partition):
     """ 
@@ -101,11 +107,14 @@ def process_partition(partition):
             if llm_response.status_code == 200:
                 anonymized_text = llm_response.json().get('response', '').strip()
                 if not anonymized_text:
+                    handle_processing_error(cursor, app_id, json_error_str)
                     raise Exception("Mistral returned an empty string.")
                 print(f"[OLLAMA SUCCESS] Generated {len(anonymized_text)} characters.")
             else:
                 print(f"[OLLAMA ERROR] {llm_response.status_code} - {llm_response.text}")
                 anonymized_text = "ERROR_GENERATING_TEXT"    
+                handle_processing_error(cursor, app_id, json_error_str)
+                raise Exception(f"Mistral API error: {llm_response.status_code} - {llm_response.text}")
             # salvam in Oracle
             cursor.execute(
                 """
@@ -120,6 +129,7 @@ def process_partition(partition):
             print(f"[SUCCESS] App ID {app_id} processed by worker.")
 
         except Exception as e:
+            handle_processing_error(cursor, app_id, json_error_str)
             print(f"[ERROR] Worker failed processing App ID {app_id}: {str(e)}")
     
     # commit o singura data la finalul partitiei
@@ -131,6 +141,24 @@ def process_partition(partition):
     finally:
         cursor.close()
         conn.close()
+
+def handle_processing_error(cursor, app_id, error_message):
+    """ 
+    in caz de eroare, actualizam statusul aplicatiei in Oracle si logam eroarea
+    """
+    try:
+        cursor.execute(
+            """
+            UPDATE recruit_owner.JOB_APPLICATION 
+            SET status='PROCESSING_ERROR', 
+                secure_resume_text=:1 
+            WHERE app_id=:2
+            """,
+            [error_message, app_id]
+        )
+        cursor.connection.commit()
+    except Exception as e:
+        print(f"[ERROR] Failed to log error for App ID {app_id}: {e}")
 
 
 def write_to_oracle(df, epoch_id):
@@ -163,7 +191,7 @@ if __name__ == "__main__":
         "kafka.security.protocol": "SASL_SSL",
         "kafka.sasl.mechanism": "SCRAM-SHA-256",
         
-        "kafka.sasl.jaas.config": f'org.apache.kafka.common.security.scram.ScramLoginModule required username="admin" password="{KAFKA_ADMIN_PASSWORD}";',
+        "kafka.sasl.jaas.config": f'org.apache.kafka.common.security.scram.ScramLoginModule required username="{KAFKA_USER}" password="{KAFKA_PASSWORD}";',
         
         "kafka.ssl.truststore.location": "/opt/spark/secrets/kafka.server.truststore.jks",
         "kafka.ssl.truststore.password": KAFKA_TRUSTSTORE_PASSWORD,
@@ -171,7 +199,7 @@ if __name__ == "__main__":
         "kafka.max.partition.fetch.bytes": "10485760",  # 10 MB
         "kafka.fetch.max.bytes": "10485760"  # 10 MB
     }
-
+    
     # Citire streaming din Kafka
     df = spark.readStream \
         .format("kafka") \
