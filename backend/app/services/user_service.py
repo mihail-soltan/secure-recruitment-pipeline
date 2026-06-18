@@ -29,3 +29,21 @@ def get_candidate_id(connection, username):
         return row[0] if row else None
     finally:
         cursor.close()
+
+def get_candidate_applications(connection, candidate_id):
+    """Extrage job-urile la care a aplicat candidatul"""
+    cursor = connection.cursor()
+    try:
+        cursor.execute("""
+            SELECT j.job_id, j.title, ja.applied_at, ja.status
+            FROM recruit_owner.JOB_APPLICATION ja
+            JOIN recruit_owner.JOB j ON ja.job_id = j.job_id
+            WHERE ja.candidate_id = :1
+        """, [candidate_id])
+        
+        columns = [col[0].lower() for col in cursor.description]
+        cursor.rowfactory = lambda *args: dict(zip(columns, args))
+
+        return cursor.fetchall()
+    finally:
+        cursor.close()

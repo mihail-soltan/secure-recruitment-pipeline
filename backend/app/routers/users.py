@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from app.db.database import get_db_connection
-from app.services.user_service import authenticate_user_db, get_candidate_id
+from app.services.user_service import authenticate_user_db, get_candidate_applications, get_candidate_id
 from app.core.security import create_access_token
 from app.core.dependencies import get_current_user
 
@@ -30,6 +30,14 @@ def login_for_access_token(
         
     except RuntimeError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+@router.get("/applications/me")
+def get_user_applications(current_user: dict = Depends(get_current_user), conn = Depends(get_db_connection)):
+    if current_user["role"] != "CANDIDATE":
+        raise HTTPException(status_code=403, detail="Acces interzis")
+    
+    candidate_id = current_user["candidate_id"]
+    return get_candidate_applications(conn, candidate_id)
 
 @router.get("/me")
 def read_users_me(current_user: dict = Depends(get_current_user)):
