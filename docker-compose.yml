@@ -50,6 +50,14 @@ services:
       - kafka
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - CONNECT_STRING=${CONNECT_STRING}
+      - WALLET_PASSWORD=${WALLET_PASSWORD}
+      - WALLET_LOCATION=/usr/src/app/wallet
+      - KAFKA_USER=${KAFKA_USER}
+      - KAFKA_PASSWORD=${KAFKA_PASSWORD}
+      - SSL_CA_LOCATION=/usr/src/secrets/ca-cert.pem
     volumes:
     - ./db/Wallet_unidb:/usr/src/app/wallet
     - ./secrets:/usr/src/secrets
@@ -86,6 +94,9 @@ services:
       - DB_DSN=unidb_tp
       - WALLET_LOCATION=/opt/spark/wallet
       - WALLET_PASSWORD=${WALLET_PASSWORD}
+      - KAFKA_PASSWORD=${KAFKA_PASSWORD}
+      - KAFKA_TRUSTSTORE_PASSWORD=${KAFKA_SSL_TRUSTSTORE_PASSWORD}
+      - KAFKA_USER=${KAFKA_USER}
     ports:
       - '8080:8080'
       - '7077:7077'
@@ -111,6 +122,9 @@ services:
       - DB_DSN=unidb_tp
       - WALLET_LOCATION=/opt/spark/wallet
       - WALLET_PASSWORD=${WALLET_PASSWORD}
+      - KAFKA_PASSWORD=${KAFKA_PASSWORD}
+      - KAFKA_TRUSTSTORE_PASSWORD=${KAFKA_SSL_TRUSTSTORE_PASSWORD}
+      - KAFKA_USER=${KAFKA_USER}
     ports:
       - '8081:8081'
     depends_on:

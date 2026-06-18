@@ -289,6 +289,30 @@ BEGIN
 END;
 /
 
+CREATE OR REPLACE TRIGGER trg_audit_job_delete
+AFTER DELETE ON JOB
+FOR EACH ROW
+BEGIN
+    INSERT INTO AUDIT_LOG (db_user, table_name, operation, old_value, new_value)
+    VALUES (SYS_CONTEXT('USERENV', 'SESSION_USER'), 'JOB', 'DELETE', 'Job ID: ' || :OLD.job_id || ' Title: ' || :OLD.title, 'DELETED');
+END;
+/
+
+CREATE OR REPLACE TRIGGER trg_audit_processing_error
+AFTER UPDATE OF status ON JOB_APPLICATION
+FOR EACH ROW
+WHEN (NEW.status = 'PROCESSING_ERROR')
+BEGIN
+    INSERT INTO AUDIT_LOG (db_user, table_name, operation, old_value, new_value)
+    VALUES (
+        SYS_CONTEXT('USERENV', 'SESSION_USER'),
+        'JOB_APPLICATION',
+        'UPDATE',
+        'Previous Status: ' || :OLD.status,
+        'New Status: ' || :NEW.status
+    );
+END;
+/
 
 CREATE OR REPLACE TRIGGER trg_audit_offer
 AFTER INSERT OR UPDATE ON OFFER
@@ -426,3 +450,18 @@ BEGIN
   );
 END;
 /
+
+ALTER TABLE JOB ADD CONSTRAINT salary_check CHECK (min_salary >= 0 AND max_salary >= 0 AND max_salary >= min_salary);
+ALTER TABLE JOB_APPLICATION ADD CONSTRAINT status_check CHECK (status IN ('APPLIED', 'RECEIVED', 'PROCESSED_SECURE','PROCESSING_ERROR', 'INTERVIEW', 'OFFERED', 'REJECTED', 'WITHDRAWN', 'HIRED'));
+
+ALTER TABLE JOB ADD (
+    location VARCHAR2(100) DEFAULT 'Remote',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP,
+    CONSTRAINT location_check CHECK (location IS NOT NULL AND location <> '')
+);
+
+ALTER TABLE JOB_APPLICATION ADD (
+    updated_at TIMESTAMP,
+    CONSTRAINT updated_at_check CHECK (updated_at IS NULL OR updated_at >= applied_at)
+);
