@@ -31,6 +31,10 @@ def fetch_jobs():
     response = requests.get(f"{API_URL}/jobs/", headers=get_auth_header())
     return response.json() if response.status_code == 200 else []
 
+def fetch_candidate_applications():
+    response = requests.get(f"{API_URL}/users/applications/me", headers=get_auth_header())
+    return response.json() if response.status_code == 200 else []
+
 def apply_to_job(job_id, email, resume_file):
     files = {"resume": (resume_file.name, resume_file.getvalue(), resume_file.type)}
     data = {"email": email}
@@ -53,38 +57,58 @@ if not st.session_state.access_token:
         if submitted:
             login(username, password)
 else:
-    st.sidebar.title("Navigation")
     user_data = fetch_me()
+    st.sidebar.title("Navigation")
     
     if user_data:
-        st.sidebar.write(f"Logged in as: {user_data.get('username', 'User')}")
+        st.sidebar.success(f"Logged in as: {user_data.get('username', 'User')}")
         
+    page = st.sidebar.radio("Go to:", ["Open Jobs", "My Applications"])
+
     if st.sidebar.button("Logout"):
         st.session_state.access_token = None
         st.rerun()
 
-    st.title("Open Jobs Dashboard")
-    
-    jobs = fetch_jobs()
-    if not jobs:
-        st.info("No active jobs available or failed to fetch.")
-    
-    for job in jobs:
-        job_id = job.get("JOB_ID")
-        job_title = job.get("title", f"Job #{job_id}")
+    if page == "Open Jobs":
+        jobs = fetch_jobs()
+        st.title("Open Jobs Dashboard")
+        if not jobs:
+            st.info("No active jobs available or failed to fetch.")
         
-        with st.expander(f"Apply for: {job_title}"):
-            with st.form(f"apply_form_{job_id}"):
-                email = st.text_input("Applicant Email")
-                resume = st.file_uploader("Upload Resume (PDF/DOCX)")
-                
-                submitted = st.form_submit_button("Submit Application")
-                if submitted:
-                    if not email or not resume:
-                        st.warning("Please provide both email and a resume file.")
-                    else:
-                        success = apply_to_job(job_id, email, resume)
-                        if success:
-                            st.success("Application submitted successfully!")
+        for job in jobs:
+            job_id = job.get("JOB_ID")
+            job_title = job.get("title", f"Job #{job_id}")
+            
+            with st.expander(f"Apply for: {job_title}"):
+                with st.form(f"apply_form_{job_id}"):
+                    email = st.text_input("Applicant Email")
+                    resume = st.file_uploader("Upload Resume (PDF/DOCX)")
+                    
+                    submitted = st.form_submit_button("Submit Application")
+                    if submitted:
+                        if not email or not resume:
+                            st.warning("Please provide both email and a resume file.")
                         else:
-                            st.error("Failed to submit application.")
+                            success = apply_to_job(job_id, email, resume)
+                            if success:
+                                st.success("Application submitted successfully!")
+                            else:
+                                st.error("Failed to submit application.")
+    elif page == "My Applications":
+        st.title("My Applications")    
+        applications = fetch_candidate_applications()
+        if not applications:
+            st.info("You haven't applied to any jobs yet.")
+        else:
+            for app in applications:
+                st.card = st.container(border=True)
+                with st.card:
+                    st.subheader(app.get("title", "Unknown Job"))
+                    st.write(f"**Applied on:** {app.get('applied_at', 'N/A')}")
+                    status = app.get("status", "UNKNOWN")
+                    if status == "PROCESSED_SECURE":
+                        st.success("Status: Securely Processed")
+                    elif status == "PROCESSING_ERROR":
+                        st.error("Status: Processing Error - Please reapply")
+                    else:
+                        st.info(f"Status: {status}")
