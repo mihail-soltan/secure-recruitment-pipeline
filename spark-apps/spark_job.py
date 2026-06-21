@@ -7,6 +7,9 @@ import requests
 import fitz  # PyMuPDF
 import oracledb
 import json
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
 KAFKA_USER = os.getenv("KAFKA_USER")
@@ -55,7 +58,8 @@ def process_partition(partition):
     for row in partition:
         app_id = row['app_id']
         pdf_b64 = row['file_content']
-        
+        email = row['email']
+
         if not pdf_b64:
             continue
 
@@ -107,13 +111,13 @@ def process_partition(partition):
             if llm_response.status_code == 200:
                 anonymized_text = llm_response.json().get('response', '').strip()
                 if not anonymized_text:
-                    handle_processing_error(cursor, app_id, json_error_str)
+                    handle_processing_error(cursor, app_id, json_error_str, email)
                     raise Exception("Mistral returned an empty string.")
                 print(f"[OLLAMA SUCCESS] Generated {len(anonymized_text)} characters.")
             else:
                 print(f"[OLLAMA ERROR] {llm_response.status_code} - {llm_response.text}")
                 anonymized_text = "ERROR_GENERATING_TEXT"    
-                handle_processing_error(cursor, app_id, json_error_str)
+                handle_processing_error(cursor, app_id, json_error_str, email)
                 raise Exception(f"Mistral API error: {llm_response.status_code} - {llm_response.text}")
             # salvam in Oracle
             cursor.execute(
@@ -129,7 +133,7 @@ def process_partition(partition):
             print(f"[SUCCESS] App ID {app_id} processed by worker.")
 
         except Exception as e:
-            handle_processing_error(cursor, app_id, json_error_str)
+            handle_processing_error(cursor, app_id, json_error_str, email)
             print(f"[ERROR] Worker failed processing App ID {app_id}: {str(e)}")
     
     # commit o singura data la finalul partitiei
@@ -142,7 +146,7 @@ def process_partition(partition):
         cursor.close()
         conn.close()
 
-def handle_processing_error(cursor, app_id, error_message):
+def handle_processing_error(cursor, app_id, error_message, email):
     """ 
     in caz de eroare, actualizam statusul aplicatiei in Oracle si logam eroarea
     """
@@ -157,6 +161,7 @@ def handle_processing_error(cursor, app_id, error_message):
             [error_message, app_id]
         )
         cursor.connection.commit()
+        notify_candidate_error(email, app_id)
     except Exception as e:
         print(f"[ERROR] Failed to log error for App ID {app_id}: {e}")
 
@@ -167,6 +172,43 @@ def write_to_oracle(df, epoch_id):
     iar aceasta va delega procesarea fiecarui rand catre workerii disponibili folosind process_partition
     """
     df.foreachPartition(process_partition)
+
+def notify_candidate_error(email, app_id):
+    """ 
+    in caz de eroare, se trimite un email candidatului pentru a-l anunta ca a intervenit o problema
+    """
+    SMTP_SERVER = os.getenv("SMTP_SERVER")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+    EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+
+    subject = "Issue with Your Job Application"
+    body = f"""
+    Buna ziua,
+    
+    Am intampinat o eroare la procesarea securizata a CV-ului dumneavoastra 
+    pentru aplicatia cu numarul {app_id}. Formatul fisierului PDF nu a putut fi citit 
+    sau a aparut o eroare interna. 
+    
+    Va rugam sa reincarcati documentul. Ne cerem scuze pentru neplaceri!
+
+    Echipa de recrutare
+    """
+
+    msg = MIMEMultipart()
+    msg['From'] = EMAIL_SENDER
+    msg['To'] = email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.send_message(msg)
+        print(f"[EMAIL SENT] Notification sent to {email} for App ID {app_id}")
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to send notification to {email} for App ID {app_id}: {e}")
 
 if __name__ == "__main__":
     spark = SparkSession.builder \
