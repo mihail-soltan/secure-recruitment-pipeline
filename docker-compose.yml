@@ -58,9 +58,14 @@ services:
       - KAFKA_USER=${KAFKA_USER}
       - KAFKA_PASSWORD=${KAFKA_PASSWORD}
       - SSL_CA_LOCATION=/usr/src/secrets/ca-cert.pem
+      - EMAIL_SENDER=${EMAIL_SENDER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - SMTP_SERVER=${SMTP_SERVER}
+      - SMTP_PORT=${SMTP_PORT}
     volumes:
     - ./db/Wallet_unidb:/usr/src/app/wallet
     - ./secrets:/usr/src/secrets
+    - ./utils:/usr/src/app/app/utils
   frontend_service:
     build: ./frontend
     container_name: frontend_service
@@ -109,6 +114,7 @@ services:
       - ./spark-data:/opt/spark-data
       - ./secrets:/opt/spark/secrets
       - ./db/Wallet_unidb:/opt/spark/wallet
+      - ./utils:/opt/spark-apps/utils
 
   spark-worker:
     build: 
@@ -141,9 +147,11 @@ services:
       - ./spark-apps:/opt/spark-apps
       - ./spark-data:/opt/spark-data
       - ./secrets:/opt/spark/secrets
-      - ./db/Wallet_unidb:/opt/spark/wallet 
+      - ./db/Wallet_unidb:/opt/spark/wallet
+      - ./utils:/opt/spark-apps/utils 
 volumes:
   kafka_kraft:
   spark-apps:
   spark-data:
   ollama_data:
+  utils:
