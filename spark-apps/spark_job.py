@@ -10,7 +10,7 @@ import json
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
+from utils.email_utils import send_email
 KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
 KAFKA_USER = os.getenv("KAFKA_USER")
 KAFKA_TRUSTSTORE_PASSWORD = os.getenv("KAFKA_TRUSTSTORE_PASSWORD")
@@ -129,14 +129,13 @@ def process_partition(partition):
                 """,
                 [anonymized_text, app_id]
             )
-            
+            update_candidate(cursor, email, pdf_bytes, app_id)
             print(f"[SUCCESS] App ID {app_id} processed by worker.")
 
         except Exception as e:
             handle_processing_error(cursor, app_id, json_error_str, email)
             print(f"[ERROR] Worker failed processing App ID {app_id}: {str(e)}")
     
-    # commit o singura data la finalul partitiei
     try:
         conn.commit()
     except Exception as e:
@@ -160,8 +159,7 @@ def handle_processing_error(cursor, app_id, error_message, email):
             """,
             [error_message, app_id]
         )
-        cursor.connection.commit()
-        notify_candidate_error(email, app_id)
+        send_email(email)
     except Exception as e:
         print(f"[ERROR] Failed to log error for App ID {app_id}: {e}")
 
@@ -210,6 +208,24 @@ def notify_candidate_error(email, app_id):
     except Exception as e:
         print(f"[EMAIL ERROR] Failed to send notification to {email} for App ID {app_id}: {e}")
 
+def update_candidate(cursor, email, pdf_bytes, app_id):
+    """ 
+    Actualizeaza email-ul si salveaza fisierul PDF in tabelul CANDIDATE.
+    Sub-query-ul leaga automat app_id-ul de candidatul corect.
+    """
+    try:
+        cursor.execute(
+            """
+            UPDATE recruit_owner.CANDIDATE 
+            SET email=:1, 
+                resume_file=:2 
+            WHERE candidate_id = (SELECT candidate_id FROM recruit_owner.JOB_APPLICATION WHERE app_id=:3)
+            """,
+            [email, pdf_bytes, app_id]
+        )
+    except Exception as e:
+        print(f"[ERROR] Failed to update candidate for App ID {app_id}: {e}")
+        
 if __name__ == "__main__":
     spark = SparkSession.builder \
         .appName("SecureRecruitmentPipeline") \
