@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 import os
+import sys
 import base64
 import requests
 import fitz  # PyMuPDF
@@ -10,7 +11,10 @@ import json
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from utils.email_utils import send_email
+# from utils.email_utils import send_email
+
+sys.path.append("/opt")
+
 KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
 KAFKA_USER = os.getenv("KAFKA_USER")
 KAFKA_TRUSTSTORE_PASSWORD = os.getenv("KAFKA_TRUSTSTORE_PASSWORD")
@@ -149,6 +153,8 @@ def handle_processing_error(cursor, app_id, error_message, email):
     """ 
     in caz de eroare, actualizam statusul aplicatiei in Oracle si logam eroarea
     """
+    from utils.email_utils import send_email
+    
     try:
         cursor.execute(
             """
