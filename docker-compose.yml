@@ -17,8 +17,8 @@ services:
 
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,LOCAL://0.0.0.0:9094
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL,CONTROLLER:PLAINTEXT,LOCAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092,LOCAL://localhost:9094
-
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092,LOCAL://kafka:9094
+      
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
 
@@ -41,6 +41,27 @@ services:
     volumes:
       - kafka_kraft:/var/lib/kafka/data
       - ./secrets:/etc/kafka/secrets
+  kafka-init:
+    image: confluentinc/cp-kafka:7.8.3
+    container_name: kafka-init
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_USER=${KAFKA_USER}
+      - KAFKA_PASSWORD=${KAFKA_PASSWORD}
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka to be ready...'
+        cub kafka-ready -b kafka:9094 1 40
+
+        echo 'Creating topic cv_uri_brute...'
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9094 --partitions 1 --replication-factor 1 --topic cv_uri_brute
+
+        echo 'Creating SCRAM user...'
+        kafka-configs --bootstrap-server kafka:9094 --alter --add-config 'SCRAM-SHA-256=[password='$$KAFKA_PASSWORD']' --entity-type users --entity-name $$KAFKA_USER
+
+        echo 'Kafka initialization complete!'
+      "
   backend_service:
     build: ./backend
     container_name: backend_service
@@ -114,7 +135,7 @@ services:
       - ./spark-data:/opt/spark-data
       - ./secrets:/opt/spark/secrets
       - ./db/Wallet_unidb:/opt/spark/wallet
-      - ./utils:/opt/spark-apps/utils
+      - ./utils:/opt/utils
 
   spark-worker:
     build: 
@@ -148,7 +169,7 @@ services:
       - ./spark-data:/opt/spark-data
       - ./secrets:/opt/spark/secrets
       - ./db/Wallet_unidb:/opt/spark/wallet
-      - ./utils:/opt/spark-apps/utils 
+      - ./utils:/opt/utils
 volumes:
   kafka_kraft:
   spark-apps:
